@@ -1,1 +1,1 @@
-# stock_predict
+# jsk_stock_predict
