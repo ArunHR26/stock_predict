@@ -8,13 +8,14 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
-START = "2010-01-01"
+ACCU = 0.75
+START = "2022-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 st.title("Stock Price Prediction")
 
 stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS")
 selected_stock = st.selectbox("Select stock", stocks)
-n_days = st.slider("Number of days to predict", 1, 365)
+n_days = st.slider("Number of days to predict", 30, 365)
 
 @st.cache_data
 def load_data(ticker):
@@ -59,7 +60,7 @@ forecast_test = m.predict(test_df)
 mae = mean_absolute_error(test_df['y'], forecast_test['yhat'])
 accuracy = 1 - mae / test_df['y'].mean()
 
-while accuracy < 0.93:
+while accuracy <= ACCU:
     # Instantiate a new Prophet object
     m = Prophet(daily_seasonality=True)
     
