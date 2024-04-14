@@ -75,7 +75,7 @@ for changepoint_prior_scale in [0.001, 0.01, 0.1, 0.5]:
     for seasonality_prior_scale in [0.01, 0.1, 1.0, 10.0]:
         for holidays_prior_scale in [0.01, 0.1, 1.0, 10.0]:
             m, df, test_data = train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale)
-            accuracy, _, _ = evaluate_model(m, df, test_data)
+            accuracy, test_df, _ = evaluate_model(m, df, test_data)
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
                 best_model = m
@@ -94,6 +94,7 @@ st.write(forecast.tail(n_days))
 
 st.write('Forecast Data')
 fig = plot_plotly(best_model, forecast)
+fig.add_trace(go.Scatter(x=test_df['ds'], y=test_df['y'], mode='markers'))
 st.plotly_chart(fig)
 
 st.write('Forecast Components')
