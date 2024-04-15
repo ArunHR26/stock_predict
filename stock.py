@@ -2,9 +2,10 @@ import streamlit as st
 from datetime import date
 import yfinance as yf
 import pandas as pd
-from sklearn.metrics import mean_absolute_error
-from pandas.tseries.offsets import CustomBusinessDay
+import numpy as np
+import plotly.graph_objs as go
 import lightgbm as lgb
+import matplotlib.pyplot as plt
 
 START = "2022-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
@@ -12,35 +13,13 @@ st.title("Stock Price Prediction")
 
 stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS", "HDFCBANK.NS", "ADANIGREEN.NS")
 selected_stock = st.selectbox("Select stock", stocks)
+n_days = st.slider("Number of days to predict", 7, 365)
 
-# Adjust the number of days to predict
-n_days = st.slider("Number of days to predict", 4, 365)
-
-# Function to load data
 @st.cache_data
 def load_data(ticker):
     data = yf.download(ticker, START, TODAY)
     data.reset_index(inplace=True)
     return data
-
-
-# Download Indian holidays data from the internet
-def download_indian_holidays():
-    indian_holidays_url = "https://www.officeholidays.com/ics/india"
-    response = requests.get(indian_holidays_url)
-    ical_data = response.text
-
-    # Parse the downloaded data to extract holiday dates
-    holidays = []
-    for line in ical_data.split("\n"):
-        if line.startswith("DTSTART"):
-            holiday_date = line.split(":")[1]
-            holidays.append(pd.to_datetime(holiday_date))
-    return holidays
-
-# Excluding Indian holidays and weekends
-indian_holidays = download_indian_holidays()
-indian_bday = CustomBusinessDay(holidays=indian_holidays)
 
 data_load_state = st.text("Loading data...")
 data = load_data(selected_stock)
@@ -49,66 +28,66 @@ data_load_state.text("Loading data... Done!")
 st.subheader(f"{selected_stock} Raw Data")
 st.write(data.tail())
 
-def plot_raw_data():
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Open'], name='Stock Open'))
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], name='Stock Close'))
-    fig.layout.update(title_text="Time Series Data", xaxis_rangeslider_visible=True)
-    st.plotly_chart(fig)
-plot_raw_data()
-
-# Prepare data for LightGBM
+# Feature engineering
 data['Date'] = pd.to_datetime(data['Date'])
 data['day_of_week'] = data['Date'].dt.dayofweek
-data['quarter'] = data['Date'].dt.quarter
 data['month'] = data['Date'].dt.month
-data['year'] = data['Date'].dt.year
-data['day_of_year'] = data['Date'].dt.dayofyear
 data['day_of_month'] = data['Date'].dt.day
-data['week_of_year'] = data['Date'].dt.isocalendar().week
 
-train_size = int(len(data) * 0.99)
-train_data, test_data = data[:train_size], data[train_size:]
+# Model training
+def train_model(data):
+    train_size = int(len(data) * 0.99)
+    train_data, test_data = data[:train_size], data[train_size:]
 
-train_X = train_data.drop(['Date', 'Close'], axis=1)
-train_y = train_data['Close']
-test_X = test_data.drop(['Date', 'Close'], axis=1)
-test_y = test_data['Close']
+    lgb_train = lgb.Dataset(train_data[['day_of_week', 'month', 'day_of_month']], label=train_data['Close'])
+    lgb_eval = lgb.Dataset(test_data[['day_of_week', 'month', 'day_of_month']], label=test_data['Close'], reference=lgb_train)
 
-# Train LightGBM model
-params = {
-    'boosting_type': 'gbdt',
-    'objective': 'regression',
-    'metric': {'l1', 'l2'},
-    'num_leaves': 31,
-    'learning_rate': 0.05,
-    'feature_fraction': 0.9,
-    'bagging_fraction': 0.8,
-    'bagging_freq': 5,
-    'verbose': 0
-}
+    params = {
+        'objective': 'regression',
+        'metric': 'mse',
+        'num_leaves': 31,
+        'learning_rate': 0.05,
+        'feature_fraction': 0.9,
+        'early_stopping_round': 5  # Early stopping rounds
+    }
 
-lgb_train = lgb.Dataset(train_X, train_y)
-lgb_eval = lgb.Dataset(test_X, test_y, reference=lgb_train)
+    gbm = lgb.train(params, lgb_train, num_boost_round=1000, valid_sets=[lgb_train, lgb_eval], verbose_eval=False)
 
-st.text("Training LightGBM model...")
-gbm = lgb.train(params, lgb_train, num_boost_round=1000, valid_sets=lgb_eval, early_stopping_rounds=100)
+    # Calculate accuracy
+    mse = gbm.best_score['valid_1']['l2']
+    rmse = np.sqrt(mse)
+    accuracy = 100 - rmse
+    st.subheader(f"Model Accuracy: {accuracy:.2f}%")
+
+    return gbm, test_data
+
+gbm, test_data = train_model(data)
+
+st.subheader("Forecasting")
 
 # Generate forecast
-future_dates = pd.date_range(start=data['Date'].max(), periods=n_days, freq=indian_bday)
-future_dates = pd.Index([date.today()] + future_dates.tolist())  # Include current date explicitly
+future_dates = pd.date_range(start=data['Date'].max(), periods=n_days + 1)[1:]
 future_data = pd.DataFrame({'Date': future_dates})
 future_data['day_of_week'] = future_data['Date'].dt.dayofweek
-future_data['quarter'] = future_data['Date'].dt.quarter
 future_data['month'] = future_data['Date'].dt.month
-future_data['year'] = future_data['Date'].dt.year
-future_data['day_of_year'] = future_data['Date'].dt.dayofyear
 future_data['day_of_month'] = future_data['Date'].dt.day
-future_data['week_of_year'] = future_data['Date'].dt.isocalendar().week
 
-forecast = gbm.predict(future_data.drop('Date', axis=1))
+forecast = gbm.predict(future_data[['day_of_week', 'month', 'day_of_month']], num_iteration=gbm.best_iteration)
 
+# Plotting
 st.subheader(f"{selected_stock} Forecasting Data")
-forecast_df = pd.DataFrame({'Date': future_dates, 'Forecast': forecast})
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], name='Historical Data', mode='lines'))
+fig.add_trace(go.Scatter(x=future_data['Date'], y=forecast, name='Forecast', mode='lines'))
+st.plotly_chart(fig)
+
+# Display tabular view
+st.subheader("Forecasting Data")
+forecast_df = pd.DataFrame({'Date': future_data['Date'], 'Forecast': forecast})
 st.write(forecast_df)
 
+# Plot feature importance
+st.subheader("Feature Importance")
+importance_fig, ax = plt.subplots()
+lgb.plot_importance(gbm, ax=ax, height=0.5)
+st.pyplot(importance_fig)
