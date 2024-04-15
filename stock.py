@@ -1,13 +1,10 @@
 import streamlit as st
 from datetime import date
-from prophet import Prophet
-from prophet.plot import plot_plotly
-from plotly import graph_objs as go
 import yfinance as yf
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 from pandas.tseries.offsets import CustomBusinessDay
-import requests
+import lightgbm as lgb
 
 START = "2022-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
@@ -17,14 +14,15 @@ stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS", "HDFCB
 selected_stock = st.selectbox("Select stock", stocks)
 
 # Adjust the number of days to predict
-n_days = st.slider("Number of days to predict", 7, 365)
+n_days = st.slider("Number of days to predict", 4, 365)
 
-# Function to load data with volume
+# Function to load data
 @st.cache_data
 def load_data(ticker):
     data = yf.download(ticker, START, TODAY)
     data.reset_index(inplace=True)
     return data
+
 
 # Download Indian holidays data from the internet
 def download_indian_holidays():
@@ -59,71 +57,58 @@ def plot_raw_data():
     st.plotly_chart(fig)
 plot_raw_data()
 
-# Modify train_model function to include volume
-def train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale):
-    train_size = int(len(data) * 0.99)
-    train_data, test_data = data[:train_size], data[train_size:]
+# Prepare data for LightGBM
+data['Date'] = pd.to_datetime(data['Date'])
+data['day_of_week'] = data['Date'].dt.dayofweek
+data['quarter'] = data['Date'].dt.quarter
+data['month'] = data['Date'].dt.month
+data['year'] = data['Date'].dt.year
+data['day_of_year'] = data['Date'].dt.dayofyear
+data['day_of_month'] = data['Date'].dt.day
+data['week_of_year'] = data['Date'].dt.isocalendar().week
 
-    df = train_data[['Date', 'Close', 'Volume']]  # Include Volume
-    df = df.rename(columns={"Date": "ds", "Close": "y", "Volume": "volume"})  # Rename columns
+train_size = int(len(data) * 0.99)
+train_data, test_data = data[:train_size], data[train_size:]
 
-    m = Prophet(
-        daily_seasonality=True,
-        changepoint_prior_scale=changepoint_prior_scale,
-        seasonality_prior_scale=seasonality_prior_scale,
-        holidays_prior_scale=holidays_prior_scale
-    )
+train_X = train_data.drop(['Date', 'Close'], axis=1)
+train_y = train_data['Close']
+test_X = test_data.drop(['Date', 'Close'], axis=1)
+test_y = test_data['Close']
 
-    m.add_regressor('volume')  # Add volume as regressor
-    m.fit(df)
+# Train LightGBM model
+params = {
+    'boosting_type': 'gbdt',
+    'objective': 'regression',
+    'metric': {'l1', 'l2'},
+    'num_leaves': 31,
+    'learning_rate': 0.05,
+    'feature_fraction': 0.9,
+    'bagging_fraction': 0.8,
+    'bagging_freq': 5,
+    'verbose': 0
+}
 
-    return m, df, test_data
+lgb_train = lgb.Dataset(train_X, train_y)
+lgb_eval = lgb.Dataset(test_X, test_y, reference=lgb_train)
 
-# Modify evaluate_model function
-def evaluate_model(m, df, test_data):
-    test_df = test_data[['Date', 'Close', 'Volume']]  # Include Volume
-    test_df = test_df.rename(columns={"Date": "ds", "Close": "y", "Volume": "volume"})  # Rename columns
-    forecast_test = m.predict(test_df)
-
-    mae = mean_absolute_error(test_df['y'], forecast_test['yhat'])
-    accuracy = 1 - mae / test_df['y'].mean()
-
-    return accuracy, test_df, forecast_test
-
-best_accuracy = 0
-best_model = None
-best_df = None
-best_test_data = None
-
-# Hyperparameter tuning
-for changepoint_prior_scale in [0.001, 0.01, 0.1, 0.5]:
-    for seasonality_prior_scale in [0.01, 0.1, 1.0, 10.0]:
-        for holidays_prior_scale in [0.01, 0.1, 1.0, 10.0]:
-            m, df, test_data = train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale)
-            accuracy, test_df, _ = evaluate_model(m, df, test_data)
-            if accuracy > best_accuracy:
-                best_accuracy = accuracy
-                best_model = m
-                best_df = df
-                best_test_data = test_data
-
-st.write(f"Best model accuracy on test data: {best_accuracy * 100:.2f}%")
+st.text("Training LightGBM model...")
+gbm = lgb.train(params, lgb_train, num_boost_round=1000, valid_sets=lgb_eval, early_stopping_rounds=100)
 
 # Generate forecast
 future_dates = pd.date_range(start=data['Date'].max(), periods=n_days, freq=indian_bday)
 future_dates = pd.Index([date.today()] + future_dates.tolist())  # Include current date explicitly
-future = pd.DataFrame({'ds': future_dates})
-future['volume'] = best_df['volume'].iloc[-1]  # Include volume data for forecast
-forecast = best_model.predict(future)
+future_data = pd.DataFrame({'Date': future_dates})
+future_data['day_of_week'] = future_data['Date'].dt.dayofweek
+future_data['quarter'] = future_data['Date'].dt.quarter
+future_data['month'] = future_data['Date'].dt.month
+future_data['year'] = future_data['Date'].dt.year
+future_data['day_of_year'] = future_data['Date'].dt.dayofyear
+future_data['day_of_month'] = future_data['Date'].dt.day
+future_data['week_of_year'] = future_data['Date'].dt.isocalendar().week
+
+forecast = gbm.predict(future_data.drop('Date', axis=1))
 
 st.subheader(f"{selected_stock} Forecasting Data")
-st.write(forecast)
+forecast_df = pd.DataFrame({'Date': future_dates, 'Forecast': forecast})
+st.write(forecast_df)
 
-st.write('Forecast Data')
-fig = plot_plotly(best_model, forecast)
-fig.add_trace(go.Scatter(x=test_df['ds'], y=test_df['y'], mode='markers'))
-st.plotly_chart(fig)
-
-st.write('Forecast Components')
-fig = best_model.plot_components(forecast)
-st.write(fig)
