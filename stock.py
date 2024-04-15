@@ -12,9 +12,9 @@ START = "2022-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 st.title("Stock Price Prediction")
 
-stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS")
+stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS", "HDFCBANK.NS", "ADANIGREEN.NS")
 selected_stock = st.selectbox("Select stock", stocks)
-n_days = st.slider("Number of days to predict", 30, 365)
+n_days = st.slider("Number of days to predict", 7, 365)
 
 @st.cache_data
 def load_data(ticker):
@@ -38,7 +38,7 @@ def plot_raw_data():
 plot_raw_data()
 
 def train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale):
-    train_size = int(len(data) * 0.8)
+    train_size = int(len(data) * 0.99)
     train_data, test_data = data[:train_size], data[train_size:]
 
     df = train_data[['Date', 'Close']]
