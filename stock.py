@@ -107,7 +107,7 @@ for changepoint_prior_scale in [0.001, 0.01, 0.1, 0.5]:
                 best_df = df
                 best_test_data = test_data
 
-st.write(f"Best model accuracy on test data: {best_accuracy * 100:.2f}%")
+st.subheader(f"Best model accuracy on test data: {best_accuracy * 100:.2f}%")
 
 # Generate forecast
 future_dates = pd.date_range(start=data['Date'].max(), periods=n_days, freq=indian_bday)
