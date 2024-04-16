@@ -6,14 +6,12 @@ from plotly import graph_objs as go
 import yfinance as yf
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
-from pandas.tseries.offsets import CustomBusinessDay
-import requests
 
-START = "2022-01-01"
+START = "2017-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 st.title("Stock Price Prediction")
 
-stocks = ("LLOYDSENGG.NS", "NHPC.NS", "UPL.NS", "GENSOL.NS", "JIOFIN.NS", "HDFCBANK.NS", "ADANIGREEN.NS")
+stocks = ("DOGE-USD", "BTC-USD", "ETH-USD", "BNB-USD")
 selected_stock = st.selectbox("Select stock", stocks)
 
 # Adjust the number of days to predict
@@ -25,24 +23,6 @@ def load_data(ticker):
     data = yf.download(ticker, START, TODAY)
     data.reset_index(inplace=True)
     return data
-
-# Download Indian holidays data from the internet
-def download_indian_holidays():
-    indian_holidays_url = "https://www.officeholidays.com/ics/india"
-    response = requests.get(indian_holidays_url)
-    ical_data = response.text
-
-    # Parse the downloaded data to extract holiday dates
-    holidays = []
-    for line in ical_data.split("\n"):
-        if line.startswith("DTSTART"):
-            holiday_date = line.split(":")[1]
-            holidays.append(pd.to_datetime(holiday_date))
-    return holidays
-
-# Excluding Indian holidays and weekends
-indian_holidays = download_indian_holidays()
-indian_bday = CustomBusinessDay(holidays=indian_holidays)
 
 data_load_state = st.text("Loading data...")
 data = load_data(selected_stock)
@@ -110,7 +90,7 @@ for changepoint_prior_scale in [0.001, 0.01, 0.1, 0.5]:
 st.write(f"Best model accuracy on test data: {best_accuracy * 100:.2f}%")
 
 # Generate forecast
-future_dates = pd.date_range(start=data['Date'].max(), periods=n_days, freq=indian_bday)
+future_dates = pd.date_range(start=data['Date'].max(), periods=n_days)
 future_dates = pd.Index([date.today()] + future_dates.tolist())  # Include current date explicitly
 future = pd.DataFrame({'ds': future_dates})
 future['volume'] = best_df['volume'].iloc[-1]  # Include volume data for forecast
