@@ -9,7 +9,7 @@ from sklearn.metrics import mean_absolute_error
 from pandas.tseries.offsets import CustomBusinessDay
 import requests
 
-START = "2022-01-01"
+START = "2015-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 st.title("Stock Price Prediction")
 
@@ -61,7 +61,7 @@ plot_raw_data()
 
 # Modify train_model function to include volume
 def train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale):
-    train_size = int(len(data) * 0.99)
+    train_size = int(len(data) * 0.999)
     train_data, test_data = data[:train_size], data[train_size:]
 
     df = train_data[['Date', 'Close', 'Volume']]  # Include Volume
