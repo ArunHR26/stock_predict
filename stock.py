@@ -7,7 +7,7 @@ import yfinance as yf
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
-START = "2017-01-01"
+START = "2021-01-01"
 TODAY = date.today().strftime("%Y-%m-%d")
 st.title("Stock Price Prediction")
 
