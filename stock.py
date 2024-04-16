@@ -14,6 +14,7 @@ st.title("Stock Price Prediction")
 stocks = ("DOGE-USD", "BTC-USD", "ETH-USD", "BNB-USD")
 selected_stock = st.selectbox("Select stock", stocks)
 
+
 # Adjust the number of days to predict
 n_days = st.slider("Number of days to predict", 7, 365)
 
@@ -103,7 +104,8 @@ st.write('Forecast Data')
 fig = plot_plotly(best_model, forecast)
 fig.add_trace(go.Scatter(x=test_df['ds'], y=test_df['y'], mode='markers'))
 st.plotly_chart(fig)
+st.bar_chart(fig)
 
-st.write('Forecast Components')
-fig = best_model.plot_components(forecast)
-st.write(fig)
+# st.write('Forecast Components')
+# fig = best_model.plot_components(forecast)
+# st.write(fig)
