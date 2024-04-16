@@ -42,7 +42,7 @@ plot_raw_data()
 
 # Modify train_model function to include volume
 def train_model(data, changepoint_prior_scale, seasonality_prior_scale, holidays_prior_scale):
-    train_size = int(len(data) * 0.991)
+    train_size = int(len(data) * 0.999)
     train_data, test_data = data[:train_size], data[train_size:]
 
     df = train_data[['Date', 'Close', 'Volume']]  # Include Volume
@@ -104,8 +104,7 @@ st.write('Forecast Data')
 fig = plot_plotly(best_model, forecast)
 fig.add_trace(go.Scatter(x=test_df['ds'], y=test_df['y'], mode='markers'))
 st.plotly_chart(fig)
-st.bar_chart(fig)
 
-# st.write('Forecast Components')
-# fig = best_model.plot_components(forecast)
-# st.write(fig)
+st.write('Forecast Components')
+fig = best_model.plot_components(forecast)
+st.write(fig)
