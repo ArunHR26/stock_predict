@@ -19,7 +19,7 @@ selected_stock = st.selectbox("Select stock", stocks)
 n_days = st.slider("Number of days to predict", 7, 365)
 
 # Function to load data with volume
-@st.cache_data
+
 def load_data(ticker):
     data = yf.download(ticker, START, TODAY)
     data.reset_index(inplace=True)
